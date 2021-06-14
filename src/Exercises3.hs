@@ -10,14 +10,25 @@ import Test.QuickCheck hiding (resize)
 movingAvgApp ::
   forall n . (KnownNat n, SystemClockResetEnable) =>
   Signal System (Signed n) -> Signal System (Signed n)
-movingAvgApp = undefined
+movingAvgApp xs =
+    let acc = register ((0,0), 0) accN
+        accN = f <$> acc <*> xs
+    in fst . fst <$> acc
+  where
+    f ((accQ,accR), n) x = (quotRem (accQ * n + accR + x) (n + 1), n + 1)
+
 
 -- Use 'mealy' or 'moore'
 movingAvgCombinator ::
   forall n . (KnownNat n, SystemClockResetEnable) =>
   Signal System (Signed n) -> Signal System (Signed n)
-movingAvgCombinator = undefined
+movingAvgCombinator = mealy f ((0,0), 0)
+  where
+    f ((accQ,accR), n) x =
+      let a = (quotRem (accQ * n + accR + x) (n + 1), n + 1)
+      in (a, fst . fst $ a)
 
+{-
 -- 2. Number of ones greater or equal to three
 
 numberGEqThreeComb ::
@@ -55,3 +66,4 @@ patternNonOverlapping ::
   Vec n a ->
   Signal System a -> Signal System (Unsigned m)
 patternNonOverlapping = undefined
+-}

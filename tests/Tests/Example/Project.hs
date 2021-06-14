@@ -12,6 +12,7 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Example.Project (plus)
+import Exercises3
 
 prop_plusIsCommutative :: H.Property
 prop_plusIsCommutative = H.property $ do
