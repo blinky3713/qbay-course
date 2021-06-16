@@ -1,10 +1,7 @@
 module Exercises3 where
 
-import Clash.Prelude
-import Test.QuickCheck hiding (resize)
-import Data.Bifunctor (second)
-import Data.Maybe (isJust)
-import Debug.Trace as Trace
+import           Clash.Prelude
+import           Test.QuickCheck hiding (resize)
 
 -- 1. Moving avarage
 
@@ -49,13 +46,6 @@ numberGEqThreeComb_reference bv = popCount bv > 2
 prop_numberGEqThreeComb =
   quickCheck (numberGEqThreeComb .==. numberGEqThreeComb_reference)
 
-{-
-
-   z --- x -- y --- w
-   | <--- - -- - -- |
-
--}
-
 -- | Takes at most 'n' cycles to determine whether a BitVector
 -- has three or more bits set to '1' (i.e. is "bit-serial")
 numberGEqThreeSeq ::
@@ -63,7 +53,7 @@ numberGEqThreeSeq ::
   SystemClockResetEnable =>
   Signal System (BitVector n) -> Signal System (Maybe Bool)
 numberGEqThreeSeq bsV  =
-  let n = snatToNum (SNat :: SNat n)
+  let
       x :: Signal System (Int, BitVector n)
       x = let y = f <$> bsV <*> x
           in register (n - 1, 0) y
@@ -72,7 +62,10 @@ numberGEqThreeSeq bsV  =
       w = mealy bitChecker 0 x
   in w
   where
-    f bs (m, _) = (m - 1, bs)
+    n = snatToNum (SNat :: SNat n)
+    f bs (m, _)
+      | m == 0 = (n - 1, bs)
+      | otherwise = (m - 1, bs)
     bitChecker :: Int -> (Int, BitVector n) -> (Int, Maybe Bool)
     bitChecker s (m,x)
       | m == 0 =
@@ -80,23 +73,33 @@ numberGEqThreeSeq bsV  =
           in (0, Just $ s' >= 3)
       | otherwise =
           let s' = s + fromIntegral (x ! m)
-          in if s' >= 3 then (0, Just True) else (s', Nothing)
+          in (s', Nothing)
 
-
+-- | Count the number of occurances of a pattern (overlapping matches)
+patternOverlapping
+  :: forall n k m a .
+     KnownNat n
+  => KnownNat m
+  => Eq a
+  => SystemClockResetEnable
+  => (k + 1) ~ n
+  => NFDataX a
+  => Vec n a
+  --  The pattern to match against
+  -> Signal System a
+  -> Signal System (Unsigned m)
+patternOverlapping p as =
+  let mPattern = map Just p
+      f :: Vec n (Maybe a) -> a -> (Vec n (Maybe a), Unsigned m)
+      f acc a =
+        let acc' :: 1 <= n => Vec n (Maybe a)
+            acc' = Just a :> init acc
+        in if acc' == mPattern then (acc', 1) else (acc', 0)
+  in mealy (\s i -> (s + i, s + i)) 0 (mealy f (repeat Nothing) as)
 
 
 
 {-
--- 3. Pattern recognizer
-
--- | Count the number of occurances of a pattern (overlapping matches)
-patternOverlapping ::
-  forall n m a . (KnownNat n, Eq a, SystemClockResetEnable) =>
-  -- | The pattern to match against
-  Vec n a ->
-  Signal System a -> Signal System (Unsigned m)
-patternOverlapping = undefined
-
 -- | Count the number of occurances of a pattern (non-overlapping matches)
 patternNonOverlapping ::
   forall n m a . (KnownNat n, Eq a, SystemClockResetEnable) =>
