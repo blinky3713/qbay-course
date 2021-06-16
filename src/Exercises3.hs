@@ -2,6 +2,7 @@ module Exercises3 where
 
 import           Clash.Prelude
 import           Test.QuickCheck hiding (resize)
+import qualified Debug.Trace as Trace
 
 -- 1. Moving avarage
 
@@ -84,6 +85,7 @@ patternOverlapping
   => SystemClockResetEnable
   => (k + 1) ~ n
   => NFDataX a
+  => Show a
   => Vec n a
   --  The pattern to match against
   -> Signal System a
@@ -94,17 +96,43 @@ patternOverlapping p as =
       f acc a =
         let acc' :: 1 <= n => Vec n (Maybe a)
             acc' = Just a :> init acc
-        in if acc' == mPattern then (acc', 1) else (acc', 0)
+        in Trace.traceShow acc' $
+             if acc' == mPattern then (acc', 1) else (acc', 0)
   in mealy (\s i -> (s + i, s + i)) 0 (mealy f (repeat Nothing) as)
 
 
 
-{-
+
 -- | Count the number of occurances of a pattern (non-overlapping matches)
-patternNonOverlapping ::
-  forall n m a . (KnownNat n, Eq a, SystemClockResetEnable) =>
-  -- | The pattern to match against
-  Vec n a ->
-  Signal System a -> Signal System (Unsigned m)
-patternNonOverlapping = undefined
--}
+patternNonOverlapping
+  :: forall n k m a .
+     KnownNat n
+  => KnownNat m
+  => Eq a
+  => SystemClockResetEnable
+  => (k + 1) ~ n
+  => NFDataX a
+  => Show a
+  => Vec n a
+  --  The pattern to match against
+  -> Signal System a
+  -> Signal System (Unsigned m)
+patternNonOverlapping p as =
+  let mPattern = map Just p
+      f :: Vec n (Maybe a) -> a -> (Vec n (Maybe a), Unsigned m)
+      f acc a =
+        let acc' :: 1 <= n => Vec n (Maybe a)
+            acc' = Just a :> init acc
+        in
+          Trace.traceShow acc' $
+            if acc' == mPattern then (repeat Nothing, 1) else (acc', 0)
+  in mealy (\s i -> (s + i, s + i)) 0 (mealy f (repeat Nothing) as)
+
+foo :: Int -> [Unsigned 4]
+foo n =
+  sampleN n $ patternNonOverlapping ((1 :: Int) :> 0 :> 1 :> Nil) $ fromList $ cycle [1,0]
+
+bar :: Int -> [Unsigned 4]
+bar n =
+  sampleN n $ patternOverlapping ((1 :: Int) :> 0 :> 1 :> Nil) $ fromList $ cycle [1,0]
+
