@@ -2,6 +2,9 @@ module Exercises3 where
 
 import Clash.Prelude
 import Test.QuickCheck hiding (resize)
+import Data.Bifunctor (second)
+import Data.Maybe (isJust)
+import Debug.Trace as Trace
 
 -- 1. Moving avarage
 
@@ -28,27 +31,62 @@ movingAvgCombinator = mealy f ((0,0), 0)
       let a = (quotRem (accQ * n + accR + x) (n + 1), n + 1)
       in (a, fst . fst $ a)
 
-{-
+
 -- 2. Number of ones greater or equal to three
 
 numberGEqThreeComb ::
   forall n . (KnownNat n, 1 <= n) =>
   BitVector n -> Bool
-numberGEqThreeComb bv = undefined
+numberGEqThreeComb bv =
+  let s = sum . map f . bv2v $ bv
+  in s >= 3
+  where
+    f b = if b == high then (1 :: Int) else 0
 
 numberGEqThreeComb_reference :: BitVector 8 -> Bool
-numberGEqThreeComb_reference bv = (popCount bv) > 2
+numberGEqThreeComb_reference bv = popCount bv > 2
 
 prop_numberGEqThreeComb =
   quickCheck (numberGEqThreeComb .==. numberGEqThreeComb_reference)
+
+{-
+
+   z --- x -- y --- w
+   | <--- - -- - -- |
+
+-}
 
 -- | Takes at most 'n' cycles to determine whether a BitVector
 -- has three or more bits set to '1' (i.e. is "bit-serial")
 numberGEqThreeSeq ::
   forall n . KnownNat n =>
+  SystemClockResetEnable =>
   Signal System (BitVector n) -> Signal System (Maybe Bool)
-numberGEqThreeSeq bvS = undefined
+numberGEqThreeSeq bsV  =
+  let n = snatToNum (SNat :: SNat n)
+      x :: Signal System (Int, BitVector n)
+      x = let y = f <$> bsV <*> x
+          in register (n - 1, 0) y
 
+      w :: Signal System (Maybe Bool)
+      w = mealy bitChecker 0 x
+  in w
+  where
+    f bs (m, _) = (m - 1, bs)
+    bitChecker :: Int -> (Int, BitVector n) -> (Int, Maybe Bool)
+    bitChecker s (m,x)
+      | m == 0 =
+          let s' = s + fromIntegral (x ! m)
+          in (0, Just $ s' >= 3)
+      | otherwise =
+          let s' = s + fromIntegral (x ! m)
+          in if s' >= 3 then (0, Just True) else (s', Nothing)
+
+
+
+
+
+{-
 -- 3. Pattern recognizer
 
 -- | Count the number of occurances of a pattern (overlapping matches)
