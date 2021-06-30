@@ -66,6 +66,7 @@ common common-options
     ghc-typelits-natnormalise,
     ghc-typelits-extra,
     ghc-typelits-knownnat,
+    mtl,
     QuickCheck
 
 
@@ -80,6 +81,9 @@ library
   hs-source-dirs: src
   exposed-modules:
     Example.Project
+    StackMachine.Core
+    StackMachine.CoreTypes
+    StackMachine.CodeGen
     Exercises3
   default-language: Haskell2010
 
