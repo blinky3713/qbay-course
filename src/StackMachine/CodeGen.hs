@@ -25,4 +25,11 @@ expr0 = BinExpr Mul
               (Const 5))
 
 codeGen :: Expr -> [Instr]
-codeGen e = []
+codeGen = L.reverse . go []
+  where
+    go :: [Instr] -> Expr -> [Instr]
+    go acc (Const n) = Push n : acc
+    go acc (BinExpr op a b) =
+      let accA = go [] a
+          accB = go [] b
+      in Calc op : (accA <> accB <> acc)
