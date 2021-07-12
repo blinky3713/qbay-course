@@ -16,17 +16,27 @@ alu op = case op of
                 Mul -> (*)
                 Sub -> (-)
 
-core :: KnownNat n => Vec n Instr -> (Int,Int,Stack) -> (Int,Int,Stack)
+type Heap = Vec 256 Int
 
-core instrs (pc,sp,stack) = case instrs!!pc of
+core
+  :: KnownNat n
+  => Vec n Instr
+  -> (Int,Int, Heap, Stack)
+  -> (Int,Int,Heap, Stack)
 
-        Push n   -> (pc', sp+1 , stack <~ (sp,n))
+core instrs (pc,sp,heap, stack) =
+  case instrs!!pc of
+    Push n   -> (pc', sp+1 , heap, stack <~ (sp,n))
 
-        Calc op  -> (pc', sp-1 , stack <~ (sp-2,v))
-                 where
-                   v = alu op (stack!!(sp-2)) (stack!!(sp-1))
+    Calc op  -> (pc', sp-1 , heap, stack <~ (sp-2,v))
+             where
+               v = alu op (stack!!(sp-2)) (stack!!(sp-1))
 
-        EndProg  -> (-1, sp, stack)
+    PushAddr n -> (pc', sp + 1, heap, stack <~ (sp, heap !! n))
+
+    Store n -> (pc', sp - 1, heap <~ (n, stack !! sp), stack)
+
+    EndProg  -> (-1, sp, heap, stack)
   where
     pc' = pc+1
 
@@ -50,17 +60,21 @@ prog0 =   Push 2
 -- top entity
 emptyStack = repeat 0
 
+emptyHeap = repeat 0
+
+prog1 = $(listToVecTH (codeGen expr0))
+
 topEntity
   :: SystemClockResetEnable
-  => Signal System (Int, Int, Stack)
+  => Signal System (Int, Int, Heap, Stack)
 topEntity = s
   where
     s' = core prog0 <$> s
-    s  = register (0,0,emptyStack) s'
+    s  = register (0,0,emptyHeap, emptyStack) s'
 
 -- Testing
 test = putStr
      . unlines
      . L.map show
-     . takeWhile (\(pc,_,_) -> pc /= -1)
+     . takeWhile (\(pc,_,_,_) -> pc /= -1)
      $ sample topEntity

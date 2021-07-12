@@ -24,12 +24,20 @@ expr0 = BinExpr Mul
               (Const 12)
               (Const 5))
 
-codeGen :: Expr -> [Instr]
-codeGen = L.reverse . go []
-  where
-    go :: [Instr] -> Expr -> [Instr]
-    go acc (Const n) = Push n : acc
-    go acc (BinExpr op a b) =
-      let accA = go [] a
-          accB = go [] b
-      in Calc op : (accA <> accB <> acc)
+class CodeGen a where
+  codeGen :: a -> [Instr]
+
+instance CodeGen Expr where
+  codeGen = L.reverse . (EndProg  :) . go []
+    where
+      go :: [Instr] -> Expr -> [Instr]
+      go acc (Const n) = Push n : acc
+      go acc (Reference n) = PushAddr n : acc
+      go acc (BinExpr op a b) =
+        let accA = go [] a
+            accB = go [] b
+        in Calc op : (accB <> accA <> acc)
+
+codeGen' :: Statement -> [Instr]
+codeGen' (Assign n expr) =
+  PushAddr n : codeGen expr
