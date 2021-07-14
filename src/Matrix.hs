@@ -1,6 +1,6 @@
 module Matrix where
 
-import Clash.Prelude
+import           Clash.Prelude
 
 dot
   :: Num a
@@ -19,7 +19,7 @@ vadd
   -> Vec n a
   -> Vec n a
 vadd (Cons a as) (Cons b bs) = a + b :> vadd as bs
-vadd _ _ = repeat 0
+vadd _ _                     = repeat 0
 
 type Matrix m n a = Vec m (Vec n a)
 

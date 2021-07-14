@@ -1,10 +1,10 @@
 module StackMachine.Core where
 
-import Clash.Prelude hiding (Const (..))
-import qualified Data.List as L
+import           Clash.Prelude          hiding (Const (..))
+import qualified Data.List              as L
 
-import StackMachine.CoreTypes
-import StackMachine.CodeGen
+import           StackMachine.CodeGen
+import           StackMachine.CoreTypes
 
 -- ========================================================================
 -- Processor functions
@@ -15,6 +15,10 @@ alu op = case op of
                 Add -> (+)
                 Mul -> (*)
                 Sub -> (-)
+                Eq  -> \a b -> if a == b then 1 else 0
+                Neq -> \a b -> if a/= b then 1 else 0
+                Lt  -> \a b -> if a < b then 1 else 0
+                Gt  -> \a b -> if a > b then 1 else 0
 
 type Heap = Vec 256 Int
 
@@ -34,9 +38,26 @@ core instrs (pc,sp,heap, stack) =
 
     PushAddr n -> (pc', sp + 1, heap, stack <~ (sp, heap !! n))
 
+    PushPC -> (pc', sp + 1, heap, stack <~ (sp, pc))
+
     Store n -> (pc', sp - 1, heap <~ (n, stack !! sp), stack)
 
+    EndRep ->
+      if stack !! sp - 1 == 0
+        then ((stack !! sp - 2) + 1, sp - 2, heap, stack)
+        else let newRepCtr = (stack !! sp - 1) - 1
+             in (stack !! sp - 2, sp, heap, stack <~ (sp - 1, newRepCtr))
+
+    JumpIfZero offset ->
+      if stack !! sp - 1 == 0
+        then (pc + offset, sp, heap, stack)
+        else (pc', sp, heap, stack)
+
+    Jump offset -> (pc + offset, sp, heap, stack)
+
     EndProg  -> (-1, sp, heap, stack)
+
+
   where
     pc' = pc+1
 
