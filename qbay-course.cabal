@@ -125,10 +125,12 @@ test-suite test-library
   main-is: unittests.hs
   other-modules:
     Tests.Example.Project
+    Tests.Example.StackMachine
   build-depends:
     qbay-course,
     QuickCheck,
     hedgehog,
     tasty >= 1.2 && < 1.3,
     tasty-hedgehog,
-    tasty-th
+    tasty-th,
+    hspec

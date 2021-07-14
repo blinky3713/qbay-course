@@ -3,6 +3,8 @@ module StackMachine.Core where
 import           Clash.Prelude          hiding (Const (..))
 import qualified Data.List              as L
 
+import           Clash.Prelude.RAM      (asyncRam)
+import           Data.Maybe             (fromMaybe)
 import           StackMachine.CodeGen
 import           StackMachine.CoreTypes
 
@@ -25,41 +27,44 @@ type Heap = Vec 256 Int
 core
   :: KnownNat n
   => Vec n Instr
-  -> (Int,Int, Heap, Stack)
-  -> (Int,Int,Heap, Stack)
+  -> Int -- read value
+  -> (Int,Int, Stack)
+  -> ((Int,Int, Stack), Maybe Int, Maybe (Int, Int)) -- (read addr, (write addr, write val))
 
-core instrs (pc,sp,heap, stack) =
-  case instrs!!pc of
-    Push n   -> (pc', sp+1 , heap, stack <~ (sp,n))
+core instrs readVal  (pc,sp, stack) =
+  case instrs !! pc of
+    PushAddr n -> ((pc', sp + 1, stack <~ (sp, readVal)), Just n, Nothing)
 
-    Calc op  -> (pc', sp-1 , heap, stack <~ (sp-2,v))
-             where
-               v = alu op (stack!!(sp-2)) (stack!!(sp-1))
-
-    PushAddr n -> (pc', sp + 1, heap, stack <~ (sp, heap !! n))
-
-    PushPC -> (pc', sp + 1, heap, stack <~ (sp, pc))
-
-    Store n -> (pc', sp - 1, heap <~ (n, stack !! sp), stack)
+    Store n -> ((pc', sp - 1, stack), Nothing, Just (n, stack !! sp))
 
     EndRep ->
       if stack !! sp - 1 == 0
-        then ((stack !! sp - 2) + 1, sp - 2, heap, stack)
+        then (((stack !! sp - 2) + 1, sp - 2, stack), Nothing, Nothing)
         else let newRepCtr = (stack !! sp - 1) - 1
-             in (stack !! sp - 2, sp, heap, stack <~ (sp - 1, newRepCtr))
+             in ((stack !! sp - 2, sp, stack <~ (sp - 1, newRepCtr)), Nothing, Nothing)
+
+    PushPC -> ((pc', sp + 1, stack <~ (sp, pc)), Nothing, Nothing)
 
     JumpIfZero offset ->
       if stack !! sp - 1 == 0
-        then (pc + offset, sp, heap, stack)
-        else (pc', sp, heap, stack)
+        then ((pc + offset, sp, stack), Nothing, Nothing)
+        else ((pc', sp, stack), Nothing, Nothing)
 
-    Jump offset -> (pc + offset, sp, heap, stack)
+    Jump offset -> ((pc + offset, sp, stack), Nothing, Nothing)
 
-    EndProg  -> (-1, sp, heap, stack)
+    EndProg  -> ((-1, sp, stack), Nothing, Nothing)
+
+    Push n   -> ((pc', sp+1 , stack <~ (sp,n)), Nothing, Nothing)
+
+    Calc op  -> ((pc', sp-1 , stack <~ (sp-2,v)), Nothing, Nothing)
+             where
+               v = alu op (stack!!(sp-2)) (stack!!(sp-1))
+
 
 
   where
     pc' = pc+1
+
 
 -- The program that results in the value of the expression (1105):
 prog0 =   Push 2
@@ -81,21 +86,27 @@ prog0 =   Push 2
 -- top entity
 emptyStack = repeat 0
 
-emptyHeap = repeat 0
 
 prog1 = $(listToVecTH (codeGen expr0))
 
 topEntity
   :: SystemClockResetEnable
-  => Signal System (Int, Int, Heap, Stack)
-topEntity = s
+  => Signal System (Int,Int,Stack)
+topEntity = s'
   where
-    s' = core prog0 <$> s
-    s  = register (0,0,emptyHeap, emptyStack) s'
+    s' :: Signal System (Int,Int,Stack)
+    s' = (\(a,_,_) -> a) <$> register ((0,0,emptyStack), Nothing, Nothing) s''
+    s'' :: Signal System ((Int, Int, Stack), Maybe Int, Maybe (Int,Int))
+    s'' = core prog0 <$> s <*> s'
+    s :: Signal System Int
+    s  = asyncRam
+           (SNat @256)
+           ((\(_,mread,_) -> fromMaybe 0 mread) <$> s'')
+           ((\(_,_,write) -> write) <$> s'')
 
 -- Testing
 test = putStr
      . unlines
      . L.map show
-     . takeWhile (\(pc,_,_,_) -> pc /= -1)
+     . takeWhile (\(pc,_,_) -> pc /= -1)
      $ sample topEntity

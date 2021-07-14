@@ -1,7 +1,6 @@
 module StackMachine.CodeGen where
 
 import           Clash.Prelude          hiding (Const (..))
-import           Control.Monad.State
 import qualified Data.List              as L
 
 import           StackMachine.CoreTypes
@@ -32,15 +31,7 @@ instance CodeGen Expr where
     where
       codeGen' expr = case expr of
         Const n -> [Push n]
-        binExpr@BinExpr{} ->
-          let
-            go :: [Instr] -> Expr -> [Instr]
-            go acc (BinExpr op a b) =
-              let accA = go [] a
-                  accB = go [] b
-              in acc <> accA <> accB <> [Calc op]
-            go acc e = acc <> codeGen' e
-          in go [] binExpr
+        BinExpr op a b -> codeGen' a <> codeGen' b <> [Calc op]
         Reference n -> [PushAddr n]
         IfThenElse b _then _else ->
           let bc = codeGen' b

@@ -13,6 +13,7 @@ import qualified Hedgehog.Range as Range
 
 import Example.Project (plus)
 import Exercises3
+import Tests.Example.StackMachine (stackMachineSpec)
 
 prop_plusIsCommutative :: H.Property
 prop_plusIsCommutative = H.property $ do
@@ -24,4 +25,6 @@ tests :: TestTree
 tests = $(testGroupGenerator)
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  defaultMain tests
+  stackMachineSpec
