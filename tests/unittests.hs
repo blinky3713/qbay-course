@@ -1,10 +1,9 @@
-import Prelude
+import           Prelude
 
-import Test.Tasty
+import           Test.Tasty
 
-import qualified Tests.Example.Project
+import           Tests.StackMachine
 
 main :: IO ()
-main = defaultMain $ testGroup "."
-  [ Tests.Example.Project.tests
-  ]
+main = do
+  stackMachineSpec

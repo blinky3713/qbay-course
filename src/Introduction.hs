@@ -1,4 +1,4 @@
-module Exercises3 where
+module Introduction where
 
 import           Clash.Prelude
 import qualified Debug.Trace     as Trace
