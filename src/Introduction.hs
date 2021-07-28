@@ -1,8 +1,8 @@
-module Exercises3 where
+module Introduction where
 
 import           Clash.Prelude
+import qualified Debug.Trace     as Trace
 import           Test.QuickCheck hiding (resize)
-import qualified Debug.Trace as Trace
 
 -- 1. Moving avarage
 
