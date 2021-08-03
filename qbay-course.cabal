@@ -74,10 +74,11 @@ library
   import: common-options
   hs-source-dirs: src
   exposed-modules:
+    Introduction
+    NBody.NBody
     StackMachine.Core
     StackMachine.CoreTypes
     StackMachine.CodeGen
-    Introduction
   default-language: Haskell2010
 
 -- Builds the executable 'clash', with qbay-course project in scope
