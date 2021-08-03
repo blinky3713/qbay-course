@@ -32,13 +32,6 @@ data Message a
   | NoMsg
   deriving (Eq, Show)
 
-eps :: Float
-eps = 0.01
-
-dt :: Num a => a
-dt  = 21600
-
-
 acc1
   :: R3 Float
   -> (R3 Float, Float)
@@ -47,26 +40,17 @@ acc1 pVec (qVec,mq) = mq/(r*r*r) ⋅ R3 (dx,dy,dz)
   where
     R3 (dx,dy,dz) = qVec - pVec
     r          = sqrt (dx*dx + dy*dy + dz*dz + eps)
+    eps = 0.01
 
-addID
-  :: Num a
-  => BodyID
-  -> Message a
-  -> Message a
-addID myID msg =
-  case msg of
-    BodyData _ p m -> BodyData myID p m
-    _              -> msg
 
-rtr
+router
   :: Num a
   => BodyID
   -> Message a
   -> (Message a, Message a)
   -> (Message a, (Message a, Message a))
-rtr myID reg (fromRing,fromBody) = ( reg' , (toRing,toBody) )
+router myID reg (fromRing, fromBody) = ( reg' , (toRing,toBody) )
   where
-    -- gravitational constant
     reg' =
       case fromRing of
         BodyData sendID _ _
@@ -74,10 +58,19 @@ rtr myID reg (fromRing,fromBody) = ( reg' , (toRing,toBody) )
           | otherwise       ->  fromRing
         UpdateV ->  UpdateP
         UpdateP ->  Send
-        Send ->  addID myID fromBody
+        Send ->  addID fromBody
         NoMsg ->  NoMsg
     toRing   = reg
     toBody   = reg
+
+    addID
+      :: Num a
+      => Message a
+      -> Message a
+    addID msg =
+      case msg of
+        BodyData _ p m -> BodyData myID p m
+        _              -> msg
 
 
 body
@@ -87,20 +80,24 @@ body
   -> ((R3 Float, R3 Float, R3 Float), Message Float)
 body m (a, v, p) fromRtr = ((a',v',p') , toRtr)
   where
+    -- timestep
+    dt  = 21600
+    -- gravitational constant
     grC = 6.674e-11
     gdt = dt * grC
     (a',v',p',toRtr) = case fromRtr of
       --  a'                   v'          p'         toRtr
       --  ------------------------------------------------------------
-      BodyData _ q mq  -> ( a + acc1 p (q,mq),  v        ,  p       ,  NoMsg          )
+      BodyData _ q mq  -> ( a + acc1 p (q,mq),  v           ,  p       ,  NoMsg          )
       UpdateV          -> ( R3 (0,0,0)          ,  v + gdt⋅a,  p       ,  NoMsg          )
       UpdateP          -> ( R3 (0,0,0)          ,  v        ,  p + dt⋅v,  NoMsg          )
       Send             -> ( R3 (0,0,0)          ,  v        ,  p       ,  BodyData 0 p m )
-      NoMsg            -> ( a                ,  v        ,  p       ,  NoMsg          )
+      NoMsg            -> ( a                   ,  v        ,  p       ,  NoMsg          )
 
 nBody
   :: KnownNat n
-  => (Vec n BodyID, Vec n Float)
+  => forall a.
+     (Vec n BodyID, Vec n Float)
   -> ( Vec n (Message Float)
      , Vec n (R3 Float, R3 Float, R3 Float)
      )
@@ -110,22 +107,14 @@ nBody
        )
      , Float
      )
-nBody (_ids, _ms) (rtrRegs,bodyRegs) _ = ( (rtrRegs',bodyRegs') , 0 )
+nBody (_ids, _ms) (routerRegs,bodyRegs) _ = ( (routerRegs',bodyRegs') , 0 )
   where
-    rtrInputs                = zip (rotateRight toRingAll (1 :: Int)) fromBodyAll
-    (rtrRegs' , rtrOutputs)  = unzip $ zipWith3 rtr _ids rtrRegs rtrInputs
-    (toRingAll, toBodyAll )  = unzip rtrOutputs
+    routerInputs                = zip (rotateRight toRingAll (1 :: Int)) fromBodyAll
+    (routerRegs' , routerOutputs)  = unzip $ zipWith3 router _ids routerRegs routerInputs
+    (toRingAll, toBodyAll )  = unzip routerOutputs
     (bodyRegs', fromBodyAll) = unzip $ zipWith3 body _ms bodyRegs toBodyAll
 
-sim
-  :: (s -> i -> (s,o))
-  -> s
-  -> [i]
-  -> [s]
-sim _ _ []     = []
-sim f s (i:is) = s : sim f s' is
-  where
-    (s',_) = f s i
+--------------------------------------------------------------------------------
 
 ids :: Vec 4 BodyID
 ids  = iterate d4 (+1) 0                -- idents of routers
@@ -133,20 +122,8 @@ ids  = iterate d4 (+1) 0                -- idents of routers
 ms :: Num a => Vec 4 a
 ms   = iterate d4 (+1) 10               -- masses of bodies
 
-rtrRegs0 :: Vec 4 (Message a)
-rtrRegs0  = replicate d4 Send           -- initial router registers
-
-test :: IO ()
-test = putStr $ unlines
-
-     $ P.map (show . fst)
-
-     $ sim (nBody (ids,ms)) (rtrRegs0, bodyRegs0) $ P.replicate 100 (0 :: Int)
-
-{-second definition of ring structure
- - Used: composition of rtr and body
- - TODO: correct position of ms and ids; now confusing
--}
+routerRegs0 :: Vec 4 (Message a)
+routerRegs0  = replicate d4 Send           -- initial router registers
 
 bodyRegs0
   :: Vec 4 (R3 Float, R3 Float, R3 Float)
@@ -156,6 +133,28 @@ bodyRegs0 =
                , R3 (1,1,1)
                )
 
+test :: IO ()
+test =
+  putStr
+     $ unlines
+     $ P.map (show . fst)
+     $ sim (nBody (ids,ms)) (routerRegs0, bodyRegs0) $ P.replicate 100 ()
+  where
+    sim
+      :: (s -> i -> (s,o))
+      -> s
+      -> [i]
+      -> [s]
+    sim _ _ []     = []
+    sim f s (i:is) = s : sim f s' is
+      where
+        (s',_) = f s i
+
+
+{-second definition of ring structure
+ - Used: composition of router and body
+ - TODO: correct position of ms and ids; now confusing
+-}
 
 (<.>)
   :: (t -> t1 -> t2 -> (a, b))
@@ -180,16 +179,16 @@ ring fnc ps ss = ss'
     inps       = rotateRight outs (1 :: Int)
 
 test2 :: IO ()
-test2 = putStr $ unlines
+test2 =
+  putStr
+    $ unlines
+    $ P.map (show . (!! (3 :: Int)))
+    $ run fnc (zip bodyRegs0 routerRegs0) $ P.replicate 100 ()
+  where
+    fnc = ring (body <.> router) (zip ms ids)
 
-      $ P.map (show . (!! (3 :: Int)))
+    run _ s []     = [s]
+    run f s (_:is) = s' : run f s' is
+            where
+              s' = f s
 
-      $ run fnc (zip bodyRegs0 rtrRegs0) $ P.replicate 100 (0 :: Int)
-        where
-          fnc = ring (body <.> rtr) (zip ms ids)
-
-run :: (t -> t) -> t -> [a] -> [t]
-run _ s []     = [s]
-run f s (_:is) = s' : run f s' is
-        where
-          s' = f s
