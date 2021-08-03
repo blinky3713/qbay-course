@@ -32,88 +32,87 @@ data Message a
   | NoMsg
   deriving (Eq, Show)
 
+-- Calculate the acceleration of body P due to
+-- the gravitational force exerted by body Q P
 acc1
   :: R3 Float
   -> (R3 Float, Float)
   -> R3 Float
-acc1 pVec (qVec,mq) = mq/(r*r*r) ⋅ R3 (dx,dy,dz)
+acc1 pVec (qVec,mq) = (grC * mq)/(r*r*r) ⋅ R3 (dx,dy,dz)
   where
+    -- gravitational constant
+    grC = 6.674e-11
     R3 (dx,dy,dz) = qVec - pVec
     r          = sqrt (dx*dx + dy*dy + dz*dz + eps)
     eps = 0.01
 
-
-router
-  :: Num a
-  => BodyID
+-- Given a bodyID and message currenly stored in the register
+-- and
+route
+  :: BodyID
   -> Message a
   -> (Message a, Message a)
   -> (Message a, (Message a, Message a))
-router myID reg (fromRing, fromBody) = ( reg' , (toRing,toBody) )
+route myID currentRegisterVal (fromRing, fromBody) = ( newRegisterVal , (toRing, toBody) )
   where
-    reg' =
+    newRegisterVal =
       case fromRing of
         BodyData sendID _ _
           | sendID == myID  ->  UpdateV
           | otherwise       ->  fromRing
         UpdateV ->  UpdateP
         UpdateP ->  Send
-        Send ->  addID fromBody
+        Send ->  addMyID fromBody
         NoMsg ->  NoMsg
-    toRing   = reg
-    toBody   = reg
+    toRing   = currentRegisterVal
+    toBody   = currentRegisterVal
 
-    addID
-      :: Num a
-      => Message a
-      -> Message a
-    addID msg =
+    addMyID msg =
       case msg of
         BodyData _ p m -> BodyData myID p m
         _              -> msg
 
+newtype Router n a = Router { unRouter :: Vec n (Message a) }
 
-body
-  :: Float
-  -> (R3 Float, R3 Float, R3 Float)
-  -> Message Float
-  -> ((R3 Float, R3 Float, R3 Float), Message Float)
-body m (a, v, p) fromRtr = ((a',v',p') , toRtr)
+
+updateBody
+  :: Float -- body mass
+  -> (R3 Float, R3 Float, R3 Float) -- current (acceleration, velocity, position)
+  -> Message Float -- incoming message from the router
+  -> ((R3 Float, R3 Float, R3 Float), Message Float) -- new (acceleration, velocity, position), message to router
+updateBody m (a, v, p) messageFromRouter = ((a',v',p') , messageToRouter)
   where
     -- timestep
     dt  = 21600
-    -- gravitational constant
-    grC = 6.674e-11
-    gdt = dt * grC
-    (a',v',p',toRtr) = case fromRtr of
+    (a', v', p', messageToRouter) = case messageFromRouter of
       --  a'                   v'          p'         toRtr
       --  ------------------------------------------------------------
-      BodyData _ q mq  -> ( a + acc1 p (q,mq),  v           ,  p       ,  NoMsg          )
-      UpdateV          -> ( R3 (0,0,0)          ,  v + gdt⋅a,  p       ,  NoMsg          )
-      UpdateP          -> ( R3 (0,0,0)          ,  v        ,  p + dt⋅v,  NoMsg          )
-      Send             -> ( R3 (0,0,0)          ,  v        ,  p       ,  BodyData 0 p m )
-      NoMsg            -> ( a                   ,  v        ,  p       ,  NoMsg          )
+      BodyData _ q mq  -> ( a + acc1 p (q,mq)   , v        , p       , NoMsg          )
+      UpdateV          -> ( R3 (0,0,0)          , v + dt⋅a , p       , NoMsg          )
+      UpdateP          -> ( R3 (0,0,0)          , v        , p + dt⋅v, NoMsg          )
+      Send             -> ( R3 (0,0,0)          , v        , p       , BodyData 0 p m )
+      NoMsg            -> ( a                   , v        , p       , NoMsg          )
 
-nBody
+updateNBodies
   :: KnownNat n
-  => forall a.
-     (Vec n BodyID, Vec n Float)
+  => ( Vec n BodyID
+     , Vec n Float
+     ) -- global env of all bodyIDs and masses
   -> ( Vec n (Message Float)
      , Vec n (R3 Float, R3 Float, R3 Float)
-     )
-  -> a
-  -> ( ( Vec n (Message Float)
-       , Vec n (R3 Float, R3 Float, R3 Float)
-       )
-     , Float
-     )
-nBody (_ids, _ms) (routerRegs,bodyRegs) _ = ( (routerRegs',bodyRegs') , 0 )
+     ) -- current router state and body states
+  -> ( Vec n (Message Float)
+     , Vec n (R3 Float, R3 Float, R3 Float)
+     ) -- new router state and body states
+updateNBodies (_ids, _ms) (routerRegs, bodyRegs) = (routerRegs', bodyRegs')
   where
-    routerInputs                = zip (rotateRight toRingAll (1 :: Int)) fromBodyAll
-    (routerRegs' , routerOutputs)  = unzip $ zipWith3 router _ids routerRegs routerInputs
+    routerInputs = zip (rotateRight toRingAll (1 :: Int)) fromBodyAll
+    (routerRegs', routerOutputs) = unzip $ zipWith3 route _ids routerRegs routerInputs
     (toRingAll, toBodyAll )  = unzip routerOutputs
-    (bodyRegs', fromBodyAll) = unzip $ zipWith3 body _ms bodyRegs toBodyAll
+    (bodyRegs', fromBodyAll) = unzip $ zipWith3 updateBody _ms bodyRegs toBodyAll
 
+--------------------------------------------------------------------------------
+-- Test input
 --------------------------------------------------------------------------------
 
 ids :: Vec 4 BodyID
@@ -138,17 +137,18 @@ test =
   putStr
      $ unlines
      $ P.map (show . fst)
-     $ sim (nBody (ids,ms)) (routerRegs0, bodyRegs0) $ P.replicate 100 ()
+     $ sim (updateNBodies (ids,ms)) (routerRegs0, bodyRegs0) $ P.replicate 100 ()
   where
+    -- simulates a clock cycle
     sim
-      :: (s -> i -> (s,o))
+      :: (s -> s)
       -> s
       -> [i]
       -> [s]
     sim _ _ []     = []
-    sim f s (i:is) = s : sim f s' is
+    sim f s (_:is) = s : sim f s' is
       where
-        (s',_) = f s i
+        s' = f s
 
 
 {-second definition of ring structure
@@ -185,7 +185,7 @@ test2 =
     $ P.map (show . (!! (3 :: Int)))
     $ run fnc (zip bodyRegs0 routerRegs0) $ P.replicate 100 ()
   where
-    fnc = ring (body <.> router) (zip ms ids)
+    fnc = ring (updateBody <.> route) (zip ms ids)
 
     run _ s []     = [s]
     run f s (_:is) = s' : run f s' is
