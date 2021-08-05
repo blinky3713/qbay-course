@@ -3,7 +3,10 @@ module NBody.NBody where
 import           Clash.Prelude
 import qualified Prelude       as P
 
-newtype R3 a = R3 (a,a,a) deriving (Eq, Show)
+newtype R3 a = R3 (a,a,a) deriving (Eq)
+
+instance Show a => Show (R3 a) where
+  show (R3 v) = show v
 
 instance Num a => Num (R3 a) where
   R3 (x,y,z) + R3 (x',y',z')  =  R3 (x+x', y+y', z+z')
@@ -94,7 +97,8 @@ updateBody m (a, v, p) messageFromRouter = ((a',v',p') , messageToRouter)
       NoMsg            -> ( a                   , v        , p       , NoMsg          )
 
 updateNBodies
-  :: KnownNat n
+  :: forall n.
+     KnownNat n
   => ( Vec n BodyID
      , Vec n Float
      ) -- global env of all bodyIDs and masses
@@ -106,9 +110,19 @@ updateNBodies
      ) -- new router state and body states
 updateNBodies (_ids, _ms) (routerRegs, bodyRegs) = (routerRegs', bodyRegs')
   where
+    routerInputs :: Vec n (Message Float, Message Float)
     routerInputs = zip (rotateRight toRingAll (1 :: Int)) fromBodyAll
+
+    routerRegs' :: Vec n (Message Float)
+    routerOutputs :: Vec n (Message Float, Message Float)
     (routerRegs', routerOutputs) = unzip $ zipWith3 route _ids routerRegs routerInputs
+
+    toRingAll :: Vec n (Message Float)
+    toBodyAll :: Vec n (Message Float)
     (toRingAll, toBodyAll )  = unzip routerOutputs
+
+    bodyRegs' :: Vec n (R3 Float, R3 Float, R3 Float)
+    fromBodyAll :: Vec n (Message Float)
     (bodyRegs', fromBodyAll) = unzip $ zipWith3 updateBody _ms bodyRegs toBodyAll
 
 --------------------------------------------------------------------------------
@@ -116,10 +130,10 @@ updateNBodies (_ids, _ms) (routerRegs, bodyRegs) = (routerRegs', bodyRegs')
 --------------------------------------------------------------------------------
 
 ids :: Vec 4 BodyID
-ids  = iterate d4 (+1) 0                -- idents of routers
+ids  = iterate d4 (+1) 1                -- idents of routers
 
 ms :: Num a => Vec 4 a
-ms   = iterate d4 (+1) 10               -- masses of bodies
+ms   = iterate d4 (+5) 10               -- masses of bodies
 
 routerRegs0 :: Vec 4 (Message a)
 routerRegs0  = replicate d4 Send           -- initial router registers
@@ -127,10 +141,12 @@ routerRegs0  = replicate d4 Send           -- initial router registers
 bodyRegs0
   :: Vec 4 (R3 Float, R3 Float, R3 Float)
 bodyRegs0 =
-  replicate d4 ( R3 (1,1,1)      -- initial body registers
-               , R3 (1,1,1)
-               , R3 (1,1,1)
-               )
+  (R3 (1,1,1), R3 (1,1,1), R3 (1,0,0)) :>
+    (R3 (1,1,1), R3 (1,1,1), R3 (0,1,0)) :>
+    (R3 (1,1,1), R3 (1,1,1), R3 (0,0,1)) :>
+    (R3 (1,1,1), R3 (1,1,1), R3 (-1,-1,-1)) :>
+    Nil
+
 
 test :: IO ()
 test =

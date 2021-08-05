@@ -76,6 +76,7 @@ library
   exposed-modules:
     Introduction
     NBody.NBody
+    NBody.Signal
     StackMachine.Core
     StackMachine.CoreTypes
     StackMachine.CodeGen
